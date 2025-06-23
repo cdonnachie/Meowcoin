@@ -18,7 +18,7 @@ static const int32_t VERSIONBITS_TOP_BITS_ASSETS = 0x30000000UL;
 /** What bitmask determines whether versionbits is in use */
 static const int32_t VERSIONBITS_TOP_MASK = 0xE0000000UL;
 /** Total bits available for versionbits */
-static const int32_t VERSIONBITS_NUM_BITS = 29;
+static const int32_t VERSIONBITS_NUM_BITS = 16; // Only consider the top 16 bits of the version field for versionbits
 
 enum ThresholdState {
     THRESHOLD_DEFINED,
@@ -35,7 +35,7 @@ typedef std::map<const CBlockIndex*, ThresholdState> ThresholdConditionCache;
 
 struct VBDeploymentInfo {
     /** Deployment name */
-    const char *name;
+    const char* name;
     /** Whether GBT clients can safely ignore this rule in simplified usage */
     bool gbt_force;
 };
@@ -53,13 +53,14 @@ extern const struct VBDeploymentInfo VersionBitsDeploymentInfo[];
 /**
  * Abstract class that implements BIP9-style threshold logic, and caches results.
  */
-class AbstractThresholdConditionChecker {
+class AbstractThresholdConditionChecker
+{
 protected:
-    virtual bool Condition(const CBlockIndex* pindex, const Consensus::Params& params) const =0;
-    virtual int64_t BeginTime(const Consensus::Params& params) const =0;
-    virtual int64_t EndTime(const Consensus::Params& params) const =0;
-    virtual int Period(const Consensus::Params& params) const =0;
-    virtual int Threshold(const Consensus::Params& params) const =0;
+    virtual bool Condition(const CBlockIndex* pindex, const Consensus::Params& params) const = 0;
+    virtual int64_t BeginTime(const Consensus::Params& params) const = 0;
+    virtual int64_t EndTime(const Consensus::Params& params) const = 0;
+    virtual int Period(const Consensus::Params& params) const = 0;
+    virtual int Threshold(const Consensus::Params& params) const = 0;
 
 public:
     BIP9Stats GetStateStatisticsFor(const CBlockIndex* pindex, const Consensus::Params& params) const;
@@ -68,8 +69,7 @@ public:
     int GetStateSinceHeightFor(const CBlockIndex* pindexPrev, const Consensus::Params& params, ThresholdConditionCache& cache) const;
 };
 
-struct VersionBitsCache
-{
+struct VersionBitsCache {
     ThresholdConditionCache caches[Consensus::MAX_VERSION_BITS_DEPLOYMENTS];
 
     void Clear();

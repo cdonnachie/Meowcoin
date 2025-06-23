@@ -3,18 +3,20 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <primitives/block.h>
 #include "hash.h"
 #include "crypto/common.h"
 #include "crypto/hmac_sha512.h"
 #include "pubkey.h"
 #include "util.h"
+#include <primitives/block.h>
 
-#include <crypto/ethash/include/ethash/progpow.hpp>
 #include <crypto/ethash/include/ethash/meowpow.hpp>
+#include <crypto/ethash/include/ethash/progpow.hpp>
+#include <crypto/scrypt.h> // for dual‐mining scrypt
 
+#include "utilstrencodings.h"
 
-//TODO remove these
+// TODO remove these
 double algoHashTotal[16];
 int algoHashHits[16];
 
@@ -37,7 +39,7 @@ unsigned int MurmurHash3(unsigned int nHashSeed, const std::vector<unsigned char
     const uint8_t* blocks = vDataToHash.data();
 
     for (int i = 0; i < nblocks; ++i) {
-        uint32_t k1 = ReadLE32(blocks + i*4);
+        uint32_t k1 = ReadLE32(blocks + i * 4);
 
         k1 *= c1;
         k1 = ROTL32(k1, 15);
@@ -55,16 +57,16 @@ unsigned int MurmurHash3(unsigned int nHashSeed, const std::vector<unsigned char
     uint32_t k1 = 0;
 
     switch (vDataToHash.size() & 3) {
-        case 3:
-            k1 ^= tail[2] << 16;
-        case 2:
-            k1 ^= tail[1] << 8;
-        case 1:
-            k1 ^= tail[0];
-            k1 *= c1;
-            k1 = ROTL32(k1, 15);
-            k1 *= c2;
-            h1 ^= k1;
+    case 3:
+        k1 ^= tail[2] << 16;
+    case 2:
+        k1 ^= tail[1] << 8;
+    case 1:
+        k1 ^= tail[0];
+        k1 *= c1;
+        k1 = ROTL32(k1, 15);
+        k1 *= c2;
+        h1 ^= k1;
     }
 
     //----------
@@ -79,26 +81,35 @@ unsigned int MurmurHash3(unsigned int nHashSeed, const std::vector<unsigned char
     return h1;
 }
 
-void BIP32Hash(const ChainCode &chainCode, unsigned int nChild, unsigned char header, const unsigned char data[32], unsigned char output[64])
+void BIP32Hash(const ChainCode& chainCode, unsigned int nChild, unsigned char header, const unsigned char data[32], unsigned char output[64])
 {
     unsigned char num[4];
     num[0] = (nChild >> 24) & 0xFF;
     num[1] = (nChild >> 16) & 0xFF;
-    num[2] = (nChild >>  8) & 0xFF;
-    num[3] = (nChild >>  0) & 0xFF;
+    num[2] = (nChild >> 8) & 0xFF;
+    num[3] = (nChild >> 0) & 0xFF;
     CHMAC_SHA512(chainCode.begin(), chainCode.size()).Write(&header, 1).Write(data, 32).Write(num, 4).Finalize(output);
 }
 
 #define ROTL(x, b) (uint64_t)(((x) << (b)) | ((x) >> (64 - (b))))
 
-#define SIPROUND do { \
-    v0 += v1; v1 = ROTL(v1, 13); v1 ^= v0; \
-    v0 = ROTL(v0, 32); \
-    v2 += v3; v3 = ROTL(v3, 16); v3 ^= v2; \
-    v0 += v3; v3 = ROTL(v3, 21); v3 ^= v0; \
-    v2 += v1; v1 = ROTL(v1, 17); v1 ^= v2; \
-    v2 = ROTL(v2, 32); \
-} while (0)
+#define SIPROUND           \
+    do {                   \
+        v0 += v1;          \
+        v1 = ROTL(v1, 13); \
+        v1 ^= v0;          \
+        v0 = ROTL(v0, 32); \
+        v2 += v3;          \
+        v3 = ROTL(v3, 16); \
+        v3 ^= v2;          \
+        v0 += v3;          \
+        v3 = ROTL(v3, 21); \
+        v3 ^= v0;          \
+        v2 += v1;          \
+        v1 = ROTL(v1, 17); \
+        v1 ^= v2;          \
+        v2 = ROTL(v2, 32); \
+    } while (0)
 
 CSipHasher::CSipHasher(uint64_t k0, uint64_t k1)
 {
@@ -300,7 +311,6 @@ uint256 MEOWPOWHash(const CBlockHeader& blockHeader, uint256& mix_hash)
 }
 
 
-
 uint256 KAWPOWHash_OnlyMix(const CBlockHeader& blockHeader)
 {
     // Build the header_hash
@@ -325,6 +335,30 @@ uint256 MEOWPOWHash_OnlyMix(const CBlockHeader& blockHeader)
     return uint256S(to_hex(result));
 }
 
+// Litecoin scrypt hash for dual-mining
+uint256 ScryptHash(const CBlockHeader& blockHeader)
+{
+    // Prepare 80-byte serialized header (traditional Scrypt format)
+    unsigned char input[80];
 
+    // version
+    WriteLE32(input, blockHeader.nVersion);
+    // prev block
+    memcpy(input + 4, blockHeader.hashPrevBlock.begin(), 32);
+    // merkle root
+    memcpy(input + 36, blockHeader.hashMerkleRoot.begin(), 32);
+    // time, bits, nonce
+    WriteLE32(input + 68, blockHeader.nTime);
+    WriteLE32(input + 72, blockHeader.nBits);
+    WriteLE32(input + 76, blockHeader.nNonce);
 
+    // Compute scrypt (Litecoin-compatible)
+    char output[32];
+    scrypt_1024_1_1_256((const char*)input, output);
 
+    // Convert output to uint256
+    uint256 result;
+    memcpy(result.begin(), output, 32);
+
+    return result;
+}

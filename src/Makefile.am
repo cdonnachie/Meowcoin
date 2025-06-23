@@ -371,7 +371,10 @@ crypto_libmeowcoin_crypto_a_SOURCES = \
   crypto/ethash/lib/keccak/keccakf800.c \
   crypto/ethash/lib/support/attributes.h \
   crypto/ethash/helpers.hpp \
-  crypto/ethash/progpow_test_vectors.hpp
+  crypto/ethash/progpow_test_vectors.hpp \
+  crypto/scrypt.cpp \
+  crypto/scrypt.h \
+  crypto/scrypt-sse2.cpp
 
 if USE_ASM
 crypto_libmeowcoin_crypto_a_SOURCES += crypto/sha256_sse4.cpp

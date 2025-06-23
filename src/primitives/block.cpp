@@ -5,12 +5,13 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "primitives/block.h"
+#include "chainparams.h"
 
-#include <hash.h>
-#include "tinyformat.h"
-#include "utilstrencodings.h"
 #include "crypto/common.h"
-
+#include "tinyformat.h"
+#include "util.h"
+#include "utilstrencodings.h"
+#include <hash.h>
 
 static const uint32_t MAINNET_X16RV2ACTIVATIONTIME = 1569945600;
 static const uint32_t TESTNET_X16RV2ACTIVATIONTIME = 1567533600;
@@ -38,6 +39,16 @@ void BlockNetwork::SetNetwork(const std::string& net)
 
 uint256 CBlockHeader::GetHash() const
 {
+    const Consensus::Params& consensusParams = GetParams().GetConsensus();
+
+    if (nHeight >= consensusParams.nScryptActivationHeight) {
+        uint8_t powType = (nVersion >> 16) & 0xFF;
+        if (powType == POW_TYPE_SCRYPT) {
+            uint256 hash = ScryptHash(*this);
+            return hash;
+        }
+        return MEOWPOWHash_OnlyMix(*this);
+    }
     if (nTime < nKAWPOWActivationTime) {
         uint32_t nTimeToUse = MAINNET_X16RV2ACTIVATIONTIME;
         if (bNetwork.fOnTestnet) {
@@ -47,19 +58,30 @@ uint256 CBlockHeader::GetHash() const
         }
         if (nTime >= nTimeToUse) {
             return HashX16RV2(BEGIN(nVersion), END(nNonce), hashPrevBlock);
+        } else {
+            return HashX16R(BEGIN(nVersion), END(nNonce), hashPrevBlock);
         }
-        else {
-        return HashX16R(BEGIN(nVersion), END(nNonce), hashPrevBlock);
-        }
-    } if (nTime < nMEOWPOWActivationTime) {
+    }
+    if (nTime < nMEOWPOWActivationTime) {
         return KAWPOWHash_OnlyMix(*this);
     } else {
-        return MEOWPOWHash_OnlyMix(*this); //MEOWPOW to engage as the primary algo
+        return MEOWPOWHash_OnlyMix(*this); // MEOWPOW to engage as the primary algo
     }
 }
 
 uint256 CBlockHeader::GetHashFull(uint256& mix_hash) const
 {
+    const Consensus::Params& consensusParams = GetParams().GetConsensus();
+
+    // Dual mining: choose between scrypt and MeowPoW
+    if (nHeight >= consensusParams.nScryptActivationHeight) {
+        uint8_t powType = (nVersion >> 16) & 0xFF;
+        if (powType == POW_TYPE_SCRYPT) {
+            return ScryptHash(*this);
+        }
+        return MEOWPOWHash(*this, mix_hash);
+    }
+    // before dual mining, use existing logic
     if (nTime < nKAWPOWActivationTime) {
         uint32_t nTimeToUse = MAINNET_X16RV2ACTIVATIONTIME;
         if (bNetwork.fOnTestnet) {
@@ -70,16 +92,14 @@ uint256 CBlockHeader::GetHashFull(uint256& mix_hash) const
         if (nTime >= nTimeToUse) {
             return HashX16RV2(BEGIN(nVersion), END(nNonce), hashPrevBlock);
         }
-
         return HashX16R(BEGIN(nVersion), END(nNonce), hashPrevBlock);
-    } if (nTime < nMEOWPOWActivationTime) {
+    }
+    if (nTime < nMEOWPOWActivationTime) {
         return KAWPOWHash(*this, mix_hash);
     } else {
-        return MEOWPOWHash(*this, mix_hash); //MEOWPOW to engage as the primary algo
+        return MEOWPOWHash(*this, mix_hash); // MEOWPOW to engage as the primary algo
     }
 }
-
-
 
 
 uint256 CBlockHeader::GetX16RHash() const
@@ -111,17 +131,28 @@ uint256 CBlockHeader::GetMEOWPOWHeaderHash() const
     return SerializeHash(input);
 }
 
+uint256 CBlockHeader::GetScryptHeaderHash() const
+{
+    CHashWriter ss(SER_GETHASH, 0);
+    ss << nVersion;
+    ss << hashPrevBlock;
+    ss << hashMerkleRoot;
+    ss << nTime;
+    ss << nBits;
+    ss << (uint32_t)(nNonce64 & 0xFFFFFFFF); // Use lower 32 bits for Scrypt compatibility
+    return ss.GetHash();
+}
+
 std::string CBlockHeader::ToString() const
 {
     std::stringstream s;
     s << strprintf("CBlock(ver=0x%08x, hashPrevBlock=%s, hashMerkleRoot=%s, nTime=%u, nBits=%08x, nNonce=%u, nNonce64=%u, nHeight=%u)\n",
-                   nVersion,
-                   hashPrevBlock.ToString(),
-                   hashMerkleRoot.ToString(),
-                   nTime, nBits, nNonce, nNonce64, nHeight);
+        nVersion,
+        hashPrevBlock.ToString(),
+        hashMerkleRoot.ToString(),
+        nTime, nBits, nNonce, nNonce64, nHeight);
     return s.str();
 }
-
 
 
 std::string CBlock::ToString() const
@@ -142,33 +173,33 @@ std::string CBlock::ToString() const
 
 /// Used to test algo switching between X16R and X16RV2
 
-//uint256 CBlockHeader::TestTiger() const
+// uint256 CBlockHeader::TestTiger() const
 //{
-//    return HashTestTiger(BEGIN(nVersion), END(nNonce), hashPrevBlock);
-//}
+//     return HashTestTiger(BEGIN(nVersion), END(nNonce), hashPrevBlock);
+// }
 //
-//uint256 CBlockHeader::TestSha512() const
+// uint256 CBlockHeader::TestSha512() const
 //{
-//    return HashTestSha512(BEGIN(nVersion), END(nNonce), hashPrevBlock);
-//}
+//     return HashTestSha512(BEGIN(nVersion), END(nNonce), hashPrevBlock);
+// }
 //
-//uint256 CBlockHeader::TestGost512() const
+// uint256 CBlockHeader::TestGost512() const
 //{
-//    return HashTestGost512(BEGIN(nVersion), END(nNonce), hashPrevBlock);
-//}
+//     return HashTestGost512(BEGIN(nVersion), END(nNonce), hashPrevBlock);
+// }
 
-//CBlock block = GetParams().GenesisBlock();
-//int64_t nStart = GetTimeMillis();
-//LogPrintf("Starting Tiger %dms\n", nStart);
-//block.TestTiger();
-//LogPrintf("Tiger Finished %dms\n", GetTimeMillis() - nStart);
+// CBlock block = GetParams().GenesisBlock();
+// int64_t nStart = GetTimeMillis();
+// LogPrintf("Starting Tiger %dms\n", nStart);
+// block.TestTiger();
+// LogPrintf("Tiger Finished %dms\n", GetTimeMillis() - nStart);
 //
-//nStart = GetTimeMillis();
-//LogPrintf("Starting Sha512 %dms\n", nStart);
-//block.TestSha512();
-//LogPrintf("Sha512 Finished %dms\n", GetTimeMillis() - nStart);
+// nStart = GetTimeMillis();
+// LogPrintf("Starting Sha512 %dms\n", nStart);
+// block.TestSha512();
+// LogPrintf("Sha512 Finished %dms\n", GetTimeMillis() - nStart);
 //
-//nStart = GetTimeMillis();
-//LogPrintf("Starting Gost512 %dms\n", nStart);
-//block.TestGost512();
-//LogPrintf("Gost512 Finished %dms\n", GetTimeMillis() - nStart);
+// nStart = GetTimeMillis();
+// LogPrintf("Starting Gost512 %dms\n", nStart);
+// block.TestGost512();
+// LogPrintf("Gost512 Finished %dms\n", GetTimeMillis() - nStart);

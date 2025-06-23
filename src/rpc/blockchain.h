@@ -8,6 +8,8 @@
 #include <map>
 #include <string>
 
+#include "primitives/block.h"
+
 class CBlock;
 class CBlockIndex;
 class UniValue;
@@ -26,9 +28,10 @@ extern std::map<std::string, CBlock> mapMEWCMEOWBlockTemplates;
  * difficulty (4295032833 hashes).
  */
 double GetDifficulty(const CBlockIndex* blockindex = nullptr);
+double GetDifficulty(POW_TYPE powType);
 
 /** Callback for when block tip changed. */
-void RPCNotifyBlockChange(bool ibd, const CBlockIndex *);
+void RPCNotifyBlockChange(bool ibd, const CBlockIndex*);
 
 /** Block description to JSON */
 UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool txDetails = false);
@@ -44,4 +47,3 @@ UniValue mempoolToJSON(bool fVerbose = false);
 UniValue blockheaderToJSON(const CBlockIndex* blockindex);
 
 #endif
-

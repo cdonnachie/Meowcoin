@@ -8,21 +8,22 @@
 #define MEOWCOIN_CONSENSUS_PARAMS_H
 
 #include "uint256.h"
+#include <cstdint>
 #include <map>
 #include <string>
 
-namespace Consensus {
-
-enum DeploymentPos
+namespace Consensus
 {
+
+enum DeploymentPos {
     DEPLOYMENT_TESTDUMMY,
-    DEPLOYMENT_ASSETS, // Deployment of HIP2
+    DEPLOYMENT_ASSETS,          // Deployment of HIP2
     DEPLOYMENT_MSG_REST_ASSETS, // Delpoyment of RIP5 and Restricted assets
     DEPLOYMENT_TRANSFER_SCRIPT_SIZE,
     DEPLOYMENT_ENFORCE_VALUE,
     DEPLOYMENT_COINBASE_ASSETS,
     // DEPLOYMENT_CSV, // Deployment of BIP68, BIP112, and BIP113.
-//    DEPLOYMENT_SEGWIT, // Deployment of BIP141, BIP143, and BIP147.
+    //    DEPLOYMENT_SEGWIT, // Deployment of BIP141, BIP143, and BIP147.
     // NOTE: Also add new deployments to VersionBitsDeploymentInfo in versionbits.cpp
     MAX_VERSION_BITS_DEPLOYMENTS
 };
@@ -53,7 +54,8 @@ struct Params {
     bool nBIP34Enabled;
     bool nBIP65Enabled;
     bool nBIP66Enabled;
-    int BIP34LockedIn; //I don't know what this is for, maybe a sanity check???
+    int BIP34LockedIn; // I don't know what this is for, maybe a sanity check???
+
     // uint256 BIP34Hash;
     /** Block height at which BIP65 becomes active */
     // int BIP65Height;
@@ -68,13 +70,18 @@ struct Params {
     uint32_t nMinerConfirmationWindow;
     BIP9Deployment vDeployments[MAX_VERSION_BITS_DEPLOYMENTS];
     /** Proof of work parameters */
-    uint256 powLimit;
-    uint256 kawpowLimit;
-    uint256 meowpowLimit;
+    uint256 powLimit;     // BTC-style pow (unused after activation)
+    uint256 kawpowLimit;  // ProgPoW limit
+    uint256 meowpowLimit; // MeowPoW limit
+    uint256 scryptLimit;  // Scrypt limit
     bool fPowAllowMinDifficultyBlocks;
     bool fPowNoRetargeting;
     int64_t nPowTargetSpacing;
     int64_t nPowTargetTimespan;
+    int64_t nScryptActivationHeight; // Block height when scrypt and dual mining activate
+    int64_t lwmaAveragingWindow;
+    std::vector<uint256> powTypeLimits;
+
     int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
     uint256 nMinimumChainWork;
     uint256 defaultAssumeValid;

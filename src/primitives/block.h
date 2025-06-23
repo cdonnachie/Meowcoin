@@ -22,6 +22,42 @@
 extern uint32_t nKAWPOWActivationTime;
 extern uint32_t nMEOWPOWActivationTime;
 
+// Default value for -powalgo argument
+const std::string DEFAULT_POW_TYPE = "meowpow";
+
+// Pow type names
+const std::string POW_TYPE_NAMES[] = {
+    "meowpow",
+    "scrypt"};
+
+// Pow type IDs
+enum POW_TYPE {
+    POW_TYPE_MEOWPOW = 0,
+    POW_TYPE_SCRYPT = 1,
+    //
+    NUM_BLOCK_TYPES = 2,
+    // Extended POW types
+    POW_TYPE_KAWPOW = 253,
+    POW_TYPE_X16R = 254,
+    POW_TYPE_UNKNOWN = 255
+};
+
+inline std::string GetPowTypeName(POW_TYPE type)
+{
+    switch (type) {
+    case POW_TYPE_MEOWPOW:
+        return "meowpow";
+    case POW_TYPE_SCRYPT:
+        return "scrypt";
+    case POW_TYPE_KAWPOW:
+        return "kawpow";
+    case POW_TYPE_X16R:
+        return "x16r";
+    default:
+        return "unknown";
+    }
+}
+
 class BlockNetwork
 {
 public:
@@ -37,7 +73,6 @@ extern BlockNetwork bNetwork;
 class CBlockHeader
 {
 public:
-
     // header
     int32_t nVersion;
     uint256 hashPrevBlock;
@@ -46,7 +81,7 @@ public:
     uint32_t nBits;
     uint32_t nNonce;
 
-    //KAAAWWWPOW+Meowpow data
+    // KAAAWWWPOW+Meowpow data
     uint32_t nHeight;
     uint64_t nNonce64;
     uint256 mix_hash;
@@ -59,18 +94,30 @@ public:
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    inline void SerializationOp(Stream& s, Operation ser_action)
+    {
         READWRITE(this->nVersion);
         READWRITE(hashPrevBlock);
         READWRITE(hashMerkleRoot);
         READWRITE(nTime);
         READWRITE(nBits);
+
+        // Determine serialization format based on time and version
         if (nTime < nKAWPOWActivationTime) {
+            // Legacy pre-KAWPOW format - always use nNonce
             READWRITE(nNonce);
-        } else { //This should be more than adequte for Meowpow
-            READWRITE(nHeight);
-            READWRITE(nNonce64);
-            READWRITE(mix_hash);
+        } else {
+            // Post-KAWPOW era: check POW type from version field
+            uint8_t powType = (nVersion >> 16) & 0xFF;
+
+            if (powType == POW_TYPE_SCRYPT) {
+                READWRITE(nNonce);
+            } else {
+                // MEOWPOW and other algorithms use extended format
+                READWRITE(nHeight);
+                READWRITE(nNonce64);
+                READWRITE(mix_hash);
+            }
         }
     }
 
@@ -100,6 +147,7 @@ public:
     uint256 GetHashFull(uint256& mix_hash) const;
     uint256 GetKAWPOWHeaderHash() const;
     uint256 GetMEOWPOWHeaderHash() const;
+    uint256 GetScryptHeaderHash() const;
     std::string ToString() const;
 
     /// Use for testing algo switch
@@ -110,6 +158,23 @@ public:
     int64_t GetBlockTime() const
     {
         return (int64_t)nTime;
+    }
+
+    POW_TYPE GetPoWType() const
+    {
+        if (nHeight == 0) {
+            return POW_TYPE_X16R; // Genesis block
+        } else if (nTime < nKAWPOWActivationTime) {
+            return POW_TYPE_X16R; // Before KAWPOW activation, use X16R
+        } else if (nTime < nMEOWPOWActivationTime) {
+            return POW_TYPE_KAWPOW; // Between KAWPOW and MEOWPOW activation
+        } else {
+            uint8_t powType = (nVersion >> 16) & 0xFF;
+            if (powType == POW_TYPE_SCRYPT)
+                return POW_TYPE_SCRYPT;
+            else
+                return POW_TYPE_MEOWPOW;
+        }
     }
 };
 
@@ -129,7 +194,7 @@ public:
         SetNull();
     }
 
-    CBlock(const CBlockHeader &header)
+    CBlock(const CBlockHeader& header)
     {
         SetNull();
         *((CBlockHeader*)this) = header;
@@ -138,7 +203,8 @@ public:
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    inline void SerializationOp(Stream& s, Operation ser_action)
+    {
         READWRITE(*(CBlockHeader*)this);
         READWRITE(vtx);
     }
@@ -153,21 +219,21 @@ public:
     CBlockHeader GetBlockHeader() const
     {
         CBlockHeader block;
-        block.nVersion       = nVersion;
-        block.hashPrevBlock  = hashPrevBlock;
+        block.nVersion = nVersion;
+        block.hashPrevBlock = hashPrevBlock;
         block.hashMerkleRoot = hashMerkleRoot;
-        block.nTime          = nTime;
-        block.nBits          = nBits;
-        block.nNonce         = nNonce;
+        block.nTime = nTime;
+        block.nBits = nBits;
+        block.nNonce = nNonce;
 
         // KAWPOW
-        block.nHeight        = nHeight;
-        block.nNonce64       = nNonce64;
-        block.mix_hash       = mix_hash;
+        block.nHeight = nHeight;
+        block.nNonce64 = nNonce64;
+        block.mix_hash = mix_hash;
         return block;
     }
 
-    // void SetPrevBlockHash(uint256 prevHash) 
+    // void SetPrevBlockHash(uint256 prevHash)
     // {
     //     block.hashPrevBlock = prevHash;
     // }
@@ -179,8 +245,7 @@ public:
  * other node doesn't have the same branch, it can find a recent common trunk.
  * The further back it is, the further before the fork it may be.
  */
-struct CBlockLocator
-{
+struct CBlockLocator {
     std::vector<uint256> vHave;
 
     CBlockLocator() {}
@@ -190,7 +255,8 @@ struct CBlockLocator
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    inline void SerializationOp(Stream& s, Operation ser_action)
+    {
         int nVersion = s.GetVersion();
         if (!(s.GetType() & SER_GETHASH))
             READWRITE(nVersion);
@@ -215,7 +281,7 @@ struct CBlockLocator
 class CKAWPOWInput : private CBlockHeader
 {
 public:
-    CKAWPOWInput(const CBlockHeader &header)
+    CKAWPOWInput(const CBlockHeader& header)
     {
         CBlockHeader::SetNull();
         *((CBlockHeader*)this) = header;
@@ -224,7 +290,8 @@ public:
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    inline void SerializationOp(Stream& s, Operation ser_action)
+    {
         READWRITE(this->nVersion);
         READWRITE(hashPrevBlock);
         READWRITE(hashMerkleRoot);
@@ -234,11 +301,11 @@ public:
     }
 };
 
-//MEOWPOW
+// MEOWPOW
 class CMEOWPOWInput : private CBlockHeader
 {
 public:
-    CMEOWPOWInput(const CBlockHeader &header)
+    CMEOWPOWInput(const CBlockHeader& header)
     {
         CBlockHeader::SetNull();
         *((CBlockHeader*)this) = header;
@@ -247,7 +314,8 @@ public:
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
+    inline void SerializationOp(Stream& s, Operation ser_action)
+    {
         READWRITE(this->nVersion);
         READWRITE(hashPrevBlock);
         READWRITE(hashMerkleRoot);

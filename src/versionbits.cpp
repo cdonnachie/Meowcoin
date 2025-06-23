@@ -5,37 +5,37 @@
 
 #include "versionbits.h"
 #include "consensus/params.h"
+#include "validation.h"
 
 const struct VBDeploymentInfo VersionBitsDeploymentInfo[Consensus::MAX_VERSION_BITS_DEPLOYMENTS] = {
     {
-        /*.name =*/ "testdummy",
-        /*.gbt_force =*/ true,
+        /*.name =*/"testdummy",
+        /*.gbt_force =*/true,
     },
-//	{
-//		/*.name =*/ "segwit",
-//		/*.gbt_force =*/ true,
-//	}
+    //	{
+    //		/*.name =*/ "segwit",
+    //		/*.gbt_force =*/ true,
+    //	}
     {
-            /*.name =*/ "assets",
-            /*.gbt_force =*/ true,
-    },
-    {
-            /*.name =*/ "messaging_restricted",
-            /*.gbt_force =*/ true,
+        /*.name =*/"assets",
+        /*.gbt_force =*/true,
     },
     {
-            /*.name =*/ "transfer_script",
-            /*.gbt_force =*/ true,
+        /*.name =*/"messaging_restricted",
+        /*.gbt_force =*/true,
     },
     {
-            /*.name =*/ "enforce_value",
-            /*.gbt_force =*/ true,
+        /*.name =*/"transfer_script",
+        /*.gbt_force =*/true,
     },
     {
-            /*.name =*/ "coinbase",
-            /*.gbt_force =*/ true,
-    }
-};
+        /*.name =*/"enforce_value",
+        /*.gbt_force =*/true,
+    },
+    {
+        /*.name =*/"coinbase",
+        /*.gbt_force =*/true,
+    }};
 
 ThresholdState AbstractThresholdConditionChecker::GetStateFor(const CBlockIndex* pindexPrev, const Consensus::Params& params, ThresholdConditionCache& cache) const
 {
@@ -77,43 +77,43 @@ ThresholdState AbstractThresholdConditionChecker::GetStateFor(const CBlockIndex*
         vToCompute.pop_back();
 
         switch (state) {
-            case THRESHOLD_DEFINED: {
-                if (pindexPrev->GetMedianTimePast() >= nTimeTimeout) {
-                    stateNext = THRESHOLD_FAILED;
-                } else if (pindexPrev->GetMedianTimePast() >= nTimeStart) {
-                    stateNext = THRESHOLD_STARTED;
-                }
+        case THRESHOLD_DEFINED: {
+            if (pindexPrev->GetMedianTimePast() >= nTimeTimeout) {
+                stateNext = THRESHOLD_FAILED;
+            } else if (pindexPrev->GetMedianTimePast() >= nTimeStart) {
+                stateNext = THRESHOLD_STARTED;
+            }
+            break;
+        }
+        case THRESHOLD_STARTED: {
+            if (pindexPrev->GetMedianTimePast() >= nTimeTimeout) {
+                stateNext = THRESHOLD_FAILED;
                 break;
             }
-            case THRESHOLD_STARTED: {
-                if (pindexPrev->GetMedianTimePast() >= nTimeTimeout) {
-                    stateNext = THRESHOLD_FAILED;
-                    break;
+            // We need to count
+            const CBlockIndex* pindexCount = pindexPrev;
+            int count = 0;
+            for (int i = 0; i < nPeriod; i++) {
+                if (Condition(pindexCount, params)) {
+                    count++;
                 }
-                // We need to count
-                const CBlockIndex* pindexCount = pindexPrev;
-                int count = 0;
-                for (int i = 0; i < nPeriod; i++) {
-                    if (Condition(pindexCount, params)) {
-                        count++;
-                    }
-                    pindexCount = pindexCount->pprev;
-                }
-                if (count >= nThreshold) {
-                    stateNext = THRESHOLD_LOCKED_IN;
-                }
-                break;
+                pindexCount = pindexCount->pprev;
             }
-            case THRESHOLD_LOCKED_IN: {
-                // Always progresses into ACTIVE.
-                stateNext = THRESHOLD_ACTIVE;
-                break;
+            if (count >= nThreshold) {
+                stateNext = THRESHOLD_LOCKED_IN;
             }
-            case THRESHOLD_FAILED:
-            case THRESHOLD_ACTIVE: {
-                // Nothing happens, these are terminal states.
-                break;
-            }
+            break;
+        }
+        case THRESHOLD_LOCKED_IN: {
+            // Always progresses into ACTIVE.
+            stateNext = THRESHOLD_ACTIVE;
+            break;
+        }
+        case THRESHOLD_FAILED:
+        case THRESHOLD_ACTIVE: {
+            // Nothing happens, these are terminal states.
+            break;
+        }
         }
         cache[pindexPrev] = state = stateNext;
     }
@@ -139,14 +139,14 @@ BIP9Stats AbstractThresholdConditionChecker::GetStateStatisticsFor(const CBlockI
     // Count from current block to beginning of period
     int count = 0;
     const CBlockIndex* currentIndex = pindex;
-    while (pindexEndOfPrevPeriod->nHeight != currentIndex->nHeight){
+    while (pindexEndOfPrevPeriod->nHeight != currentIndex->nHeight) {
         if (Condition(currentIndex, params))
             count++;
         currentIndex = currentIndex->pprev;
     }
 
     stats.count = count;
-    stats.possible = (stats.period - stats.threshold ) >= (stats.elapsed - count);
+    stats.possible = (stats.period - stats.threshold) >= (stats.elapsed - count);
 
     return stats;
 }
@@ -186,19 +186,22 @@ namespace
 /**
  * Class to implement versionbits logic.
  */
-class VersionBitsConditionChecker : public AbstractThresholdConditionChecker {
+class VersionBitsConditionChecker : public AbstractThresholdConditionChecker
+{
 private:
     const Consensus::DeploymentPos id;
 
 protected:
     int64_t BeginTime(const Consensus::Params& params) const override { return params.vDeployments[id].nStartTime; }
     int64_t EndTime(const Consensus::Params& params) const override { return params.vDeployments[id].nTimeout; }
-    int Period(const Consensus::Params& params) const override {
+    int Period(const Consensus::Params& params) const override
+    {
         if (params.vDeployments[id].nOverrideMinerConfirmationWindow > 0)
             return params.vDeployments[id].nOverrideMinerConfirmationWindow;
         return params.nMinerConfirmationWindow;
     }
-    int Threshold(const Consensus::Params& params) const override {
+    int Threshold(const Consensus::Params& params) const override
+    {
         if (params.vDeployments[id].nOverrideRuleChangeActivationThreshold > 0)
             return params.vDeployments[id].nOverrideRuleChangeActivationThreshold;
         return params.nRuleChangeActivationThreshold;
@@ -206,7 +209,10 @@ protected:
 
     bool Condition(const CBlockIndex* pindex, const Consensus::Params& params) const override
     {
-        return ((pindex->nVersion & Mask(params)) != 0);
+        if (IsLWMAActive(pindex->nHeight + 1))
+            return (pindex->nVersion & Mask(params)) != 0;
+        else
+            return (((pindex->nVersion & VERSIONBITS_TOP_MASK) == VERSIONBITS_TOP_BITS) && (pindex->nVersion & Mask(params)) != 0);
     }
 
 public:
