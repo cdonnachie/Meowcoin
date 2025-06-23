@@ -2255,13 +2255,6 @@ int32_t ComputeBlockVersion(const CBlockIndex* pindexPrev, const Consensus::Para
     LOCK(cs_main);
     int32_t nVersion = VERSIONBITS_TOP_BITS;
 
-    if (pindexPrev != nullptr) {
-        if (IsLWMAActive(pindexPrev->nHeight + 1)) {
-            // For LWMA era, start with base version
-            nVersion = VERSIONBITS_TOP_BITS;
-        }
-    }
-
     /** If the assets are deployed now. We need to use the correct block version */
     if (AreAssetsDeployed())
         nVersion = VERSIONBITS_TOP_BITS_ASSETS;
@@ -3107,7 +3100,7 @@ void static UpdateTip(CBlockIndex* pindexNew, const CChainParams& chainParams)
             int32_t nExpectedVersion = ComputeBlockVersion(pindex->pprev, chainParams.GetConsensus());
             // Mask out blocktype before checking for possible unknown upgrade
             if (IsLWMAActive(pindex->nHeight)) {
-                if ((pindex->nVersion & 0xFF00FFFF) != nExpectedVersion)
+                if ((int32_t)(pindex->nVersion & 0xFF00FFFF) != nExpectedVersion)
                     ++nUpgraded;
                 pindex = pindex->pprev;
             }
