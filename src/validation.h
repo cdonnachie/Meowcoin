@@ -601,7 +601,7 @@ bool IsRip5Active();
 bool AreTransferScriptsSizeDeployed();
 
 bool IsDGWActive(unsigned int nBlockNumber);
-bool IsLWMAActive(const CBlockHeader& block);
+bool IsLWMAActive(unsigned int nBlockNumber);
 bool IsMessagingActive(unsigned int nBlockNumber);
 bool IsRestrictedActive(unsigned int nBlockNumber);
 
