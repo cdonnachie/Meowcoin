@@ -92,6 +92,9 @@ void WalletTxToJSON(const CWalletTx& wtx, UniValue& entry)
         entry.push_back(Pair("blockhash", wtx.hashBlock.GetHex()));
         entry.push_back(Pair("blockindex", wtx.nIndex));
         entry.push_back(Pair("blocktime", mapBlockIndex[wtx.hashBlock]->GetBlockTime()));
+        POW_TYPE powType = mapBlockIndex[wtx.hashBlock]->GetBlockHeader().GetPoWType();
+        entry.push_back(Pair("pow_algo_id", powType));
+        entry.push_back(Pair("pow_algo", GetPowTypeName(powType)));
     } else {
         entry.push_back(Pair("trusted", wtx.IsTrusted()));
     }

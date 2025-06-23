@@ -274,15 +274,11 @@ bool CheckProofOfWorkLWMA(uint256 hash, unsigned int nBits, const Consensus::Par
 
     // Check range
     if (fNegative || bnTarget == 0 || fOverflow || bnTarget > UintToArith256(params.powTypeLimits[powType])) {
-        LogPrintf("CheckProofOfWorkLWMA: Invalid proof of work for %s: nBits=%08x, hash=%s, target=%s\n",
-            powType == POW_TYPE_MEOWPOW ? "MEOWPOW" : "SCRYPT", nBits, hash.ToString(), bnTarget.ToString());
         return false;
     }
 
     // Check proof of work matches claimed amount
     if (UintToArith256(hash) > bnTarget) {
-        LogPrintf("CheckProofOfWorkLWMA: Proof of work does not match for %s: nBits=%08x, hash=%s, target=%s\n",
-            powType == POW_TYPE_MEOWPOW ? "MEOWPOW" : "SCRYPT", nBits, hash.ToString(), bnTarget.ToString());
         return false;
     }
 

@@ -310,8 +310,12 @@ UniValue getmininginfo(const JSONRPCRequest& request)
             "  \"blocks\": nnn,             (numeric) The current block\n"
             "  \"currentblockweight\": nnn, (numeric) The last block weight\n"
             "  \"currentblocktx\": nnn,     (numeric) The last block transaction\n"
+            "  \"pow_algo_id\": n,          (numeric) The current pow algorithm id\n"
+            "  \"pow_algo\": \"xxxx\",      (string) The current pow algorithm name\n"
             "  \"difficulty\": xxx.xxxxx    (numeric) The current difficulty\n"
+            "  \"difficulties\": {          (object) The current difficulty for all active algos.\n"
             "  \"networkhashps\": nnn,      (numeric) The network hashes per second\n"
+            "  \"networkhashesps\": {       (object) The network hashes per second for all active algos.\n"
             "  \"hashespersec\": nnn,       (numeric) The hashes per second of built-in miner\n"
             "  \"pooledtx\": n              (numeric) The size of the mempool\n"
             "  \"chain\": \"xxxx\",           (string) current network name as defined in BIP70 (main, test, regtest)\n"
@@ -343,15 +347,24 @@ UniValue getmininginfo(const JSONRPCRequest& request)
     obj.push_back(Pair("blocks", (int)chainActive.Height()));
     obj.push_back(Pair("currentblockweight", (uint64_t)nLastBlockWeight));
     obj.push_back(Pair("currentblocktx", (uint64_t)nLastBlockTx));
+    obj.push_back(Pair("pow_algo_id", powType));
+    obj.push_back(Pair("pow_algo", GetPowTypeName(powType)));
     obj.push_back(Pair("difficulty", (double)GetDifficulty(powType)));
     if (IsLWMAActive((int)chainActive.Height())) {
-        obj.push_back(Pair("difficulty_meowpow", GetDifficulty(POW_TYPE_MEOWPOW)));
-        obj.push_back(Pair("difficulty_scrypt", GetDifficulty(POW_TYPE_SCRYPT)));
+        UniValue difficulties(UniValue::VOBJ);
+        for (int algo = 0; algo < NUM_BLOCK_TYPES; algo++) {
+            difficulties.pushKV(GetPowTypeName(static_cast<POW_TYPE>(algo)),
+                (double)GetDifficulty(static_cast<POW_TYPE>(algo)));
+        }
+        obj.pushKV("difficulties", difficulties);
     }
     obj.push_back(Pair("networkhashps", GetNetworkHashPS(120, -1, powType)));
     if (IsLWMAActive((int)chainActive.Height())) {
-        obj.push_back(Pair("networkhashps_meowpow", GetNetworkHashPS(120, -1, POW_TYPE_MEOWPOW)));
-        obj.push_back(Pair("networkhashps_scrypt", GetNetworkHashPS(120, -1, POW_TYPE_SCRYPT)));
+        UniValue networkhashesps(UniValue::VOBJ);
+        for (int algo = 0; algo < NUM_BLOCK_TYPES; algo++) {
+            networkhashesps.pushKV(GetPowTypeName(static_cast<POW_TYPE>(algo)), (UniValue)GetNetworkHashPS(120, -1, static_cast<POW_TYPE>(algo)));
+        }
+        obj.pushKV("networkhashesps", networkhashesps);
     }
     obj.push_back(Pair("hashespersec", (uint64_t)nHashesPerSec));
     obj.push_back(Pair("pooledtx", (uint64_t)mempool.size()));
@@ -499,8 +512,10 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
             "  \"sizelimit\" : n,                  (numeric) limit of block size\n"
             "  \"weightlimit\" : n,                (numeric) limit of block weight\n"
             "  \"curtime\" : ttt,                  (numeric) current timestamp in seconds since epoch (Jan 1 1970 GMT)\n"
-            "  \"bits\" : \"xxxxxxxx\",              (string) compressed target of next block\n"
+            "  \"bits\" : \"xxxxxxxx\",            (string) compressed target of next block\n"
             "  \"height\" : n                      (numeric) The height of the next block\n"
+            "  \"pow_algo_id\" : n,                (numeric) The current pow algorithm id\n"
+            "  \"pow_algo\" : \"xxxx\",            (string) The current pow algorithm name\n"
             "}\n"
 
             "\nExamples:\n" +
@@ -683,7 +698,7 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
             script = CScript() << OP_TRUE;
         }
 
-        pblocktemplate = BlockAssembler(GetParams()).CreateNewBlock(script, fSupportsSegwit);
+        pblocktemplate = BlockAssembler(GetParams()).CreateNewBlock(script, fSupportsSegwit, powType);
         lastPowType = powType;
         if (!pblocktemplate)
             throw JSONRPCError(RPC_OUT_OF_MEMORY, "Out of memory");
@@ -861,24 +876,28 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
 
     // MEOWPOW
     if (pblock->nTime >= nMEOWPOWActivationTime) {
-        std::string address = gArgs.GetArg("-miningaddress", "");
-        if (IsValidDestinationString(address)) {
-            static std::string lastheader = "";
-            if (mapMEWCMEOWBlockTemplates.count(lastheader)) {
-                if (pblock->nTime - 30 < mapMEWCMEOWBlockTemplates.at(lastheader).nTime) {
-                    result.pushKV("pprpcheader", lastheader);
-                    result.pushKV("pprpcepoch", ethash::get_epoch_number(pblock->nHeight));
-                    return result;
+        if (powType == POW_TYPE_MEOWPOW) {
+            std::string address = gArgs.GetArg("-miningaddress", "");
+            if (IsValidDestinationString(address)) {
+                static std::string lastheader = "";
+                if (mapMEWCMEOWBlockTemplates.count(lastheader)) {
+                    if (pblock->nTime - 30 < mapMEWCMEOWBlockTemplates.at(lastheader).nTime) {
+                        result.pushKV("pprpcheader", lastheader);
+                        result.pushKV("pprpcepoch", ethash::get_epoch_number(pblock->nHeight));
+                        return result;
+                    }
                 }
-            }
 
-            pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
-            result.pushKV("pprpcheader", pblock->GetMEOWPOWHeaderHash().GetHex());
-            result.pushKV("pprpcepoch", ethash::get_epoch_number(pblock->nHeight));
-            mapMEWCMEOWBlockTemplates[pblock->GetMEOWPOWHeaderHash().GetHex()] = *pblock;
-            lastheader = pblock->GetMEOWPOWHeaderHash().GetHex();
+                pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
+                result.pushKV("pprpcheader", pblock->GetMEOWPOWHeaderHash().GetHex());
+                result.pushKV("pprpcepoch", ethash::get_epoch_number(pblock->nHeight));
+                mapMEWCMEOWBlockTemplates[pblock->GetMEOWPOWHeaderHash().GetHex()] = *pblock;
+                lastheader = pblock->GetMEOWPOWHeaderHash().GetHex();
+            }
         }
     }
+    result.push_back(Pair("pow_algo_id", powType));
+    result.push_back(Pair("pow_algo", GetPowTypeName(powType)));
 
     return result;
 }

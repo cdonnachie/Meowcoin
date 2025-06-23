@@ -141,8 +141,12 @@ UniValue blockheaderToJSON(const CBlockIndex* blockindex)
     result.push_back(Pair("bits", strprintf("%08x", blockindex->nBits)));
     result.push_back(Pair("difficulty", GetDifficulty(blockindex)));
     if (IsLWMAActive(blockindex->nHeight)) {
-        result.push_back(Pair("difficulty_meowpow", GetDifficulty(POW_TYPE_MEOWPOW)));
-        result.push_back(Pair("difficulty_scrypt", GetDifficulty(POW_TYPE_SCRYPT)));
+        UniValue difficulties(UniValue::VOBJ);
+        for (int algo = 0; algo < NUM_BLOCK_TYPES; algo++) {
+            difficulties.pushKV(GetPowTypeName(static_cast<POW_TYPE>(algo)),
+                (double)GetDifficulty(static_cast<POW_TYPE>(algo)));
+        }
+        result.pushKV("difficulties", difficulties);
     }
     result.push_back(Pair("chainwork", blockindex->nChainWork.GetHex()));
 
@@ -151,6 +155,11 @@ UniValue blockheaderToJSON(const CBlockIndex* blockindex)
     CBlockIndex* pnext = chainActive.Next(blockindex);
     if (pnext)
         result.push_back(Pair("nextblockhash", pnext->GetBlockHash().GetHex()));
+
+    POW_TYPE powType = blockindex->GetBlockHeader().GetPoWType();
+    result.push_back(Pair("pow_algo_id", powType));
+    result.push_back(Pair("pow_algo", GetPowTypeName(powType)));
+
     return result;
 }
 
@@ -248,8 +257,12 @@ UniValue blockToDeltasJSON(const CBlock& block, const CBlockIndex* blockindex)
     result.push_back(Pair("bits", strprintf("%08x", block.nBits)));
     result.push_back(Pair("difficulty", GetDifficulty(blockindex)));
     if (IsLWMAActive(blockindex->nHeight)) {
-        result.push_back(Pair("difficulty_meowpow", GetDifficulty(POW_TYPE_MEOWPOW)));
-        result.push_back(Pair("difficulty_scrypt", GetDifficulty(POW_TYPE_SCRYPT)));
+        UniValue difficulties(UniValue::VOBJ);
+        for (int algo = 0; algo < NUM_BLOCK_TYPES; algo++) {
+            difficulties.pushKV(GetPowTypeName(static_cast<POW_TYPE>(algo)),
+                (double)GetDifficulty(static_cast<POW_TYPE>(algo)));
+        }
+        result.pushKV("difficulties", difficulties);
     }
     result.push_back(Pair("chainwork", blockindex->nChainWork.GetHex()));
 
@@ -271,7 +284,6 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
     // Only report confirmations if the block is on the main chain
     if (chainActive.Contains(blockindex))
         confirmations = chainActive.Height() - blockindex->nHeight + 1;
-    result.push_back(Pair("powtype", GetPowTypeName(powType)));
     result.push_back(Pair("confirmations", confirmations));
     result.push_back(Pair("strippedsize", (int)::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS)));
     result.push_back(Pair("size", (int)::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION)));
@@ -296,13 +308,18 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
     result.push_back(Pair("bits", strprintf("%08x", block.nBits)));
     result.push_back(Pair("difficulty", GetDifficulty(blockindex)));
     if (IsLWMAActive(blockindex->nHeight)) {
-        result.push_back(Pair("difficulty_meowpow", GetDifficulty(POW_TYPE_MEOWPOW)));
-        result.push_back(Pair("difficulty_scrypt", GetDifficulty(POW_TYPE_SCRYPT)));
+        UniValue difficulties(UniValue::VOBJ);
+        for (int algo = 0; algo < NUM_BLOCK_TYPES; algo++) {
+            difficulties.pushKV(GetPowTypeName(static_cast<POW_TYPE>(algo)),
+                (double)GetDifficulty(static_cast<POW_TYPE>(algo)));
+        }
+        result.pushKV("difficulties", difficulties);
     }
+
     result.push_back(Pair("chainwork", blockindex->nChainWork.GetHex()));
     result.push_back(Pair("headerhash", block.GetKAWPOWHeaderHash().GetHex()));
     result.push_back(Pair("headerhash", block.GetMEOWPOWHeaderHash().GetHex())); // Mix hash may be causing issues
-    if (powType != POW_TYPE_SCRYPT) {
+    if (powType == POW_TYPE_KAWPOW || powType == POW_TYPE_MEOWPOW) {
         result.push_back(Pair("mixhash", block.mix_hash.GetHex()));
         result.push_back(Pair("nonce64", (uint64_t)block.nNonce64));
     }
@@ -312,6 +329,9 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* blockindex, bool tx
     CBlockIndex* pnext = chainActive.Next(blockindex);
     if (pnext)
         result.push_back(Pair("nextblockhash", pnext->GetBlockHash().GetHex()));
+    result.push_back(Pair("pow_algo_id", powType));
+    result.push_back(Pair("pow_algo", GetPowTypeName(powType)));
+
     return result;
 }
 
@@ -345,7 +365,8 @@ UniValue decodeblockToJSON(const CBlock& block)
         result.push_back(Pair("mixhash", block.mix_hash.GetHex()));
         result.push_back(Pair("nonce64", (uint64_t)block.nNonce64));
     }
-    result.push_back(Pair("powtype", GetPowTypeName(powType)));
+    result.push_back(Pair("pow_algo_id", powType));
+    result.push_back(Pair("pow_algo", GetPowTypeName(powType)));
 
     return result;
 }
@@ -937,6 +958,8 @@ UniValue getblockheader(const JSONRPCRequest& request)
             "  \"chainwork\" : \"0000...1f3\"     (string) Expected number of hashes required to produce the current chain (in hex)\n"
             "  \"previousblockhash\" : \"hash\",  (string) The hash of the previous block\n"
             "  \"nextblockhash\" : \"hash\",      (string) The hash of the next block\n"
+            "  \"pow_algo_id\" : n, (numeric) The proof-of-work algorithm used for this block. This can be 0 for \"meowpow\" or 1 for \"scrypt\".\n"
+            "  \"pow_algo\" : \"xxxx\", (string) The proof-of-work algorithm used for this block. This can be \"meowpow\" or \"scrypt\".\n"
             "}\n"
             "\nResult (for verbose=false):\n"
             "\"data\"             (string) A string that is serialized, hex-encoded data for block 'hash'.\n"
@@ -1003,6 +1026,8 @@ UniValue getblock(const JSONRPCRequest& request)
             "  \"chainwork\" : \"xxxx\",  (string) Expected number of hashes required to produce the chain up to this block (in hex)\n"
             "  \"previousblockhash\" : \"hash\",  (string) The hash of the previous block\n"
             "  \"nextblockhash\" : \"hash\"       (string) The hash of the next block\n"
+            "  \"pow_algo_id\" : n, (numeric) The proof-of-work algorithm used for this block. This can be 0 for \"meowpow\" or 1 for \"scrypt\".\n"
+            "  \"pow_algo\" : \"xxxx\", (string) The proof-of-work algorithm used for this block. This can be \"meowpow\" or \"scrypt\".\n"
             "}\n"
             "\nResult (for verbosity = 2):\n"
             "{\n"
@@ -1079,6 +1104,8 @@ UniValue decodeblock(const JSONRPCRequest& request)
             "  \"time\" : ttt,          (numeric) The block time in seconds since epoch (Jan 1 1970 GMT)\n"
             "  \"nonce\" : n,           (numeric) The nonce\n"
             "  \"bits\" : \"1d00ffff\", (string) The bits\n"
+            "  \"pow_algo_id\" : n, (numeric) The proof-of-work algorithm used for this block. This can be 0 for \"meowpow\" or 1 for \"scrypt\".\n"
+            "  \"pow_algo\" : \"xxxx\", (string) The proof-of-work algorithm used for this block. This can be \"meowpow\" or \"scrypt\".\n"
             "}\n"
             "\nExamples:\n" +
             HelpExampleCli("decodeblock", "\"xxxx\"") + HelpExampleRpc("decodeblock", "\"xxxx\""));
@@ -1493,9 +1520,13 @@ UniValue getblockchaininfo(const JSONRPCRequest& request)
     obj.push_back(Pair("headers", pindexBestHeader ? pindexBestHeader->nHeight : -1));
     obj.push_back(Pair("bestblockhash", chainActive.Tip()->GetBlockHash().GetHex()));
     obj.push_back(Pair("difficulty", (double)GetDifficulty()));
-    if (IsLWMAActive(chainActive.Height())) {
-        obj.push_back(Pair("difficulty_meowpow", GetDifficulty(POW_TYPE_MEOWPOW)));
-        obj.push_back(Pair("difficulty_scrypt", GetDifficulty(POW_TYPE_SCRYPT)));
+    if (IsLWMAActive((int)chainActive.Height())) {
+        UniValue difficulties(UniValue::VOBJ);
+        for (int algo = 0; algo < NUM_BLOCK_TYPES; algo++) {
+            difficulties.pushKV(GetPowTypeName(static_cast<POW_TYPE>(algo)),
+                (double)GetDifficulty(static_cast<POW_TYPE>(algo)));
+        }
+        obj.pushKV("difficulties", difficulties);
     }
     if (IsLWMAActive(chainActive.Height())) {
         obj.push_back(Pair("difficulty_algorithm", "LWMA-3"));
